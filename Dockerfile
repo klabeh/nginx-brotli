@@ -1,133 +1,163 @@
-#
-# NOTE: THIS DOCKERFILE IS GENERATED VIA "update.sh"
-#
-# PLEASE DO NOT EDIT IT DIRECTLY.
-#
-FROM alpine:3.16
+ARG ALPINE_VERSION=3.16
+ARG NGINX_VERSION=1.23.0
+ARG NGX_BROTLI_COMMIT=9aec15e2aa6feea2113119ba06460af70ab3ea62
+ARG CONFIG="\
+		--prefix=/etc/nginx \
+		--sbin-path=/usr/sbin/nginx \
+		--modules-path=/usr/lib/nginx/modules \
+		--conf-path=/etc/nginx/nginx.conf \
+		--error-log-path=/var/log/nginx/error.log \
+		--http-log-path=/var/log/nginx/access.log \
+		--pid-path=/var/run/nginx.pid \
+		--lock-path=/var/run/nginx.lock \
+		--http-client-body-temp-path=/var/cache/nginx/client_temp \
+		--http-proxy-temp-path=/var/cache/nginx/proxy_temp \
+		--http-fastcgi-temp-path=/var/cache/nginx/fastcgi_temp \
+		--http-uwsgi-temp-path=/var/cache/nginx/uwsgi_temp \
+		--http-scgi-temp-path=/var/cache/nginx/scgi_temp \
+		--user=nginx \
+		--group=nginx \
+		--with-http_ssl_module \
+		--with-http_realip_module \
+		--with-http_addition_module \
+		--with-http_sub_module \
+		--with-http_dav_module \
+		--with-http_flv_module \
+		--with-http_mp4_module \
+		--with-http_gunzip_module \
+		--with-http_gzip_static_module \
+		--with-http_random_index_module \
+		--with-http_secure_link_module \
+		--with-http_stub_status_module \
+		--with-http_auth_request_module \
+		--with-http_xslt_module=dynamic \
+		--with-http_image_filter_module=dynamic \
+		--with-http_geoip_module=dynamic \
+		--with-threads \
+		--with-stream \
+		--with-stream_ssl_module \
+		--with-stream_ssl_preread_module \
+		--with-stream_realip_module \
+		--with-stream_geoip_module=dynamic \
+		--with-http_slice_module \
+		--with-mail \
+		--with-mail_ssl_module \
+		--with-compat \
+		--with-file-aio \
+		--with-http_v2_module \
+		--add-module=/usr/src/ngx_brotli \
+	"
 
+FROM alpine:$ALPINE_VERSION
 LABEL maintainer="NGINX Docker Maintainers <docker-maint@nginx.com>"
 
-ENV NGINX_VERSION 1.23.0
-ENV NJS_VERSION   0.7.5
-ENV PKG_RELEASE   1
+ARG NGINX_VERSION
+ARG NGX_BROTLI_COMMIT
+ARG CONFIG
 
-RUN set -x \
-# create nginx user/group first, to be consistent throughout docker variants
-    && addgroup -g 101 -S nginx \
-    && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
-    && apkArch="$(cat /etc/apk/arch)" \
-    && nginxPackages=" \
-        nginx=${NGINX_VERSION}-r${PKG_RELEASE} \
-        nginx-module-xslt=${NGINX_VERSION}-r${PKG_RELEASE} \
-        nginx-module-geoip=${NGINX_VERSION}-r${PKG_RELEASE} \
-        nginx-module-image-filter=${NGINX_VERSION}-r${PKG_RELEASE} \
-        nginx-module-njs=${NGINX_VERSION}.${NJS_VERSION}-r${PKG_RELEASE} \
-    " \
-# install prerequisites for public key and pkg-oss checks
-    && apk add --no-cache --virtual .checksum-deps \
-        openssl \
-    && case "$apkArch" in \
-        x86_64|aarch64) \
-# arches officially built by upstream
-            set -x \
-            && KEY_SHA512="e7fa8303923d9b95db37a77ad46c68fd4755ff935d0a534d26eba83de193c76166c68bfe7f65471bf8881004ef4aa6df3e34689c305662750c0172fca5d8552a *stdin" \
-            && wget -O /tmp/nginx_signing.rsa.pub https://nginx.org/keys/nginx_signing.rsa.pub \
-            && if [ "$(openssl rsa -pubin -in /tmp/nginx_signing.rsa.pub -text -noout | openssl sha512 -r)" = "$KEY_SHA512" ]; then \
-                echo "key verification succeeded!"; \
-                mv /tmp/nginx_signing.rsa.pub /etc/apk/keys/; \
-            else \
-                echo "key verification failed!"; \
-                exit 1; \
-            fi \
-            && apk add -X "https://nginx.org/packages/mainline/alpine/v$(egrep -o '^[0-9]+\.[0-9]+' /etc/alpine-release)/main" --no-cache $nginxPackages \
-            ;; \
-        *) \
-# we're on an architecture upstream doesn't officially build for
-# let's build binaries from the published packaging sources
-            set -x \
-            && tempDir="$(mktemp -d)" \
-            && chown nobody:nobody $tempDir \
-            && apk add --no-cache --virtual .build-deps \
-                gcc \
-                libc-dev \
-                make \
-                openssl-dev \
-                pcre2-dev \
-                zlib-dev \
-                linux-headers \
-                libxslt-dev \
-                gd-dev \
-                geoip-dev \
-                perl-dev \
-                libedit-dev \
-                bash \
-                alpine-sdk \
-                findutils \
-            && su nobody -s /bin/sh -c " \
-                export HOME=${tempDir} \
-                && cd ${tempDir} \
-                && curl -f -O https://hg.nginx.org/pkg-oss/archive/688.tar.gz \
-                && PKGOSSCHECKSUM=\"a8ab6ff80ab67c6c9567a9103b52a42a5962e9c1bc7091b7710aaf553a3b484af61b0797dd9b048c518e371a6f69e34d474cfaaeaa116fd2824bffa1cd9d4718 *688.tar.gz\" \
-                && if [ \"\$(openssl sha512 -r 688.tar.gz)\" = \"\$PKGOSSCHECKSUM\" ]; then \
-                    echo \"pkg-oss tarball checksum verification succeeded!\"; \
-                else \
-                    echo \"pkg-oss tarball checksum verification failed!\"; \
-                    exit 1; \
-                fi \
-                && tar xzvf 688.tar.gz \
-                && cd pkg-oss-688 \
-                && cd alpine \
-                && make all \
-                && apk index -o ${tempDir}/packages/alpine/${apkArch}/APKINDEX.tar.gz ${tempDir}/packages/alpine/${apkArch}/*.apk \
-                && abuild-sign -k ${tempDir}/.abuild/abuild-key.rsa ${tempDir}/packages/alpine/${apkArch}/APKINDEX.tar.gz \
-                " \
-            && cp ${tempDir}/.abuild/abuild-key.rsa.pub /etc/apk/keys/ \
-            && apk del .build-deps \
-            && apk add -X ${tempDir}/packages/alpine/ --no-cache $nginxPackages \
-            ;; \
-    esac \
-# remove checksum deps
-    && apk del .checksum-deps \
-# if we have leftovers from building, let's purge them (including extra, unnecessary build deps)
-    && if [ -n "$tempDir" ]; then rm -rf "$tempDir"; fi \
-    && if [ -n "/etc/apk/keys/abuild-key.rsa.pub" ]; then rm -f /etc/apk/keys/abuild-key.rsa.pub; fi \
-    && if [ -n "/etc/apk/keys/nginx_signing.rsa.pub" ]; then rm -f /etc/apk/keys/nginx_signing.rsa.pub; fi \
-# Bring in gettext so we can get `envsubst`, then throw
-# the rest away. To do this, we need to install `gettext`
-# then move `envsubst` out of the way so `gettext` can
-# be deleted completely, then move `envsubst` back.
-    && apk add --no-cache --virtual .gettext gettext \
-    && mv /usr/bin/envsubst /tmp/ \
-    \
-    && runDeps="$( \
-        scanelf --needed --nobanner /tmp/envsubst \
-            | awk '{ gsub(/,/, "\nso:", $2); print "so:" $2 }' \
-            | sort -u \
-            | xargs -r apk info --installed \
-            | sort -u \
-    )" \
-    && apk add --no-cache $runDeps \
-    && apk del .gettext \
-    && mv /tmp/envsubst /usr/local/bin/ \
-# Bring in tzdata so users could set the timezones through the environment
-# variables
-    && apk add --no-cache tzdata \
-# Bring in curl and ca-certificates to make registering on DNS SD easier
-    && apk add --no-cache curl ca-certificates \
-# forward request and error logs to docker log collector
-    && ln -sf /dev/stdout /var/log/nginx/access.log \
-    && ln -sf /dev/stderr /var/log/nginx/error.log \
-# create a docker-entrypoint.d directory
-    && mkdir /docker-entrypoint.d
+RUN \
+	apk add --no-cache --virtual .build-deps \
+		gcc \
+		libc-dev \
+		make \
+		openssl-dev \
+		pcre-dev \
+		zlib-dev \
+		linux-headers \
+		curl \
+		gnupg1 \
+		libxslt-dev \
+		gd-dev \
+		geoip-dev \
+	&& apk add --no-cache --virtual .brotli-build-deps \
+		autoconf \
+		libtool \
+		automake \
+		git \
+		g++ \
+		cmake
 
-COPY docker-entrypoint.sh /
-COPY 10-listen-on-ipv6-by-default.sh /docker-entrypoint.d
-COPY 20-envsubst-on-templates.sh /docker-entrypoint.d
-COPY 30-tune-worker-processes.sh /docker-entrypoint.d
-ENTRYPOINT ["/docker-entrypoint.sh"]
+COPY nginx.pub /tmp/nginx.pub
 
-EXPOSE 80
+RUN \
+	mkdir -p /usr/src/ngx_brotli \
+	&& cd /usr/src/ngx_brotli \
+	&& git init \
+	&& git remote add origin https://github.com/google/ngx_brotli.git \
+	&& git fetch --depth 1 origin $NGX_BROTLI_COMMIT \
+	&& git checkout --recurse-submodules -q FETCH_HEAD \
+	&& git submodule update --init --depth 1 \
+	&& cd .. \
+	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz -o nginx.tar.gz \
+	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz.asc  -o nginx.tar.gz.asc \
+        && sha512sum nginx.tar.gz nginx.tar.gz.asc \
+	&& export GNUPGHOME="$(mktemp -d)" \
+	&& gpg --import /tmp/nginx.pub \
+	&& gpg --batch --verify nginx.tar.gz.asc nginx.tar.gz \
+	&& mkdir -p /usr/src \
+	&& tar -zxC /usr/src -f nginx.tar.gz
+
+RUN \
+	cd /usr/src/nginx-$NGINX_VERSION \
+	&& ./configure $CONFIG --with-debug \
+	&& make -j$(getconf _NPROCESSORS_ONLN) \
+	&& mv objs/nginx objs/nginx-debug \
+	&& mv objs/ngx_http_xslt_filter_module.so objs/ngx_http_xslt_filter_module-debug.so \
+	&& mv objs/ngx_http_image_filter_module.so objs/ngx_http_image_filter_module-debug.so \
+	&& mv objs/ngx_http_geoip_module.so objs/ngx_http_geoip_module-debug.so \
+	&& mv objs/ngx_stream_geoip_module.so objs/ngx_stream_geoip_module-debug.so \
+	&& ./configure $CONFIG \
+	&& make -j$(getconf _NPROCESSORS_ONLN)
+
+RUN \
+	cd /usr/src/nginx-$NGINX_VERSION \
+	&& make install \
+	&& rm -rf /etc/nginx/html/ \
+	&& mkdir /etc/nginx/conf.d/ \
+	&& mkdir -p /usr/share/nginx/html/ \
+	&& install -m644 html/index.html /usr/share/nginx/html/ \
+	&& install -m644 html/50x.html /usr/share/nginx/html/ \
+	&& install -m755 objs/nginx-debug /usr/sbin/nginx-debug \
+	&& install -m755 objs/ngx_http_xslt_filter_module-debug.so /usr/lib/nginx/modules/ngx_http_xslt_filter_module-debug.so \
+	&& install -m755 objs/ngx_http_image_filter_module-debug.so /usr/lib/nginx/modules/ngx_http_image_filter_module-debug.so \
+	&& install -m755 objs/ngx_http_geoip_module-debug.so /usr/lib/nginx/modules/ngx_http_geoip_module-debug.so \
+	&& install -m755 objs/ngx_stream_geoip_module-debug.so /usr/lib/nginx/modules/ngx_stream_geoip_module-debug.so \
+	&& strip /usr/sbin/nginx* \
+	&& strip /usr/lib/nginx/modules/*.so \
+	\
+	&& apk add --no-cache --virtual .gettext gettext \
+	\
+	&& scanelf --needed --nobanner /usr/sbin/nginx /usr/lib/nginx/modules/*.so /usr/bin/envsubst \
+			| awk '{ gsub(/,/, "\nso:", $2); print "so:" $2 }' \
+			| sort -u \
+			| xargs -r apk info --installed \
+			| sort -u > /tmp/runDeps.txt
+
+FROM alpine:$ALPINE_VERSION
+ARG NGINX_VERSION
+
+COPY --from=0 /tmp/runDeps.txt /tmp/runDeps.txt
+COPY --from=0 /etc/nginx /etc/nginx
+COPY --from=0 /usr/lib/nginx/modules/*.so /usr/lib/nginx/modules/
+COPY --from=0 /usr/sbin/nginx /usr/sbin/nginx-debug /usr/sbin/
+COPY --from=0 /usr/share/nginx/html/* /usr/share/nginx/html/
+COPY --from=0 /usr/bin/envsubst /usr/local/bin/envsubst
+
+RUN \
+	addgroup -S nginx \
+	&& adduser -D -S -h /var/cache/nginx -s /sbin/nologin -G nginx nginx \
+	&& apk add --no-cache --virtual .nginx-rundeps tzdata $(cat /tmp/runDeps.txt) \
+	&& rm /tmp/runDeps.txt \
+	&& ln -s /usr/lib/nginx/modules /etc/nginx/modules \
+	# forward request and error logs to docker log collector
+	&& mkdir /var/log/nginx \
+	&& touch /var/log/nginx/access.log /var/log/nginx/error.log \
+	&& ln -sf /dev/stdout /var/log/nginx/access.log \
+	&& ln -sf /dev/stderr /var/log/nginx/error.log
+
+EXPOSE 80 443
 
 STOPSIGNAL SIGQUIT
 
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["nginx"]
+CMD ["-g", "daemon off;"]
