@@ -1,5 +1,5 @@
-ARG ALPINE_VERSION=3.16
-ARG NGINX_VERSION=1.23.0
+ARG ALPINE_VERSION=3.15
+ARG NGINX_VERSION=1.20.2
 ARG NGX_BROTLI_COMMIT=9aec15e2aa6feea2113119ba06460af70ab3ea62
 ARG CONFIG="\
 		--prefix=/etc/nginx \
@@ -65,7 +65,7 @@ RUN \
 		zlib-dev \
 		linux-headers \
 		curl \
-		gnupg \
+		gnupg1 \
 		libxslt-dev \
 		gd-dev \
 		geoip-dev \
@@ -76,8 +76,6 @@ RUN \
 		git \
 		g++ \
 		cmake
-
-COPY nginx.pub /tmp/nginx.pub
 
 RUN \
 	mkdir -p /usr/src/ngx_brotli \
@@ -90,10 +88,6 @@ RUN \
 	&& cd .. \
 	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz -o nginx.tar.gz \
 	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz.asc  -o nginx.tar.gz.asc \
-        #&& sha512sum nginx.tar.gz nginx.tar.gz.asc \
-	#&& export GNUPGHOME="$(mktemp -d)" \
-	#&& gpg --import /tmp/nginx.pub \
-	#&& gpg --batch --verify nginx.tar.gz.asc nginx.tar.gz \
 	&& mkdir -p /usr/src \
 	&& tar -zxC /usr/src -f nginx.tar.gz
 
@@ -154,6 +148,9 @@ RUN \
 	&& touch /var/log/nginx/access.log /var/log/nginx/error.log \
 	&& ln -sf /dev/stdout /var/log/nginx/access.log \
 	&& ln -sf /dev/stderr /var/log/nginx/error.log
+
+#COPY nginx.conf /etc/nginx/nginx.conf
+#COPY nginx.vh.default.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80 443
 
