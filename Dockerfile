@@ -90,9 +90,9 @@ RUN \
 	&& cd .. \
 	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz -o nginx.tar.gz \
 	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz.asc  -o nginx.tar.gz.asc \
-        && sha512sum nginx.tar.gz nginx.tar.gz.asc \
-	&& export GNUPGHOME="$(mktemp -d)" \
-	&& gpg --import /tmp/nginx.pub \
+        #&& sha512sum nginx.tar.gz nginx.tar.gz.asc \
+	#&& export GNUPGHOME="$(mktemp -d)" \
+	#&& gpg --import /tmp/nginx.pub \
 	#&& gpg --batch --verify nginx.tar.gz.asc nginx.tar.gz \
 	&& mkdir -p /usr/src \
 	&& tar -zxC /usr/src -f nginx.tar.gz
